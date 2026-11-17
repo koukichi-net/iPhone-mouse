@@ -378,6 +378,11 @@ xcrun devicectl device install app --device <UDID> build/Build/Products/Debug-ip
 xcrun devicectl device process launch --console --terminate-existing --device <UDID> <バンドルID> [-- 引数...]
 ```
 
+- 構成は2つある。
+  - **リリース版**（`scripts/build.sh --release`、`scripts/install.sh --release`、`scripts/open.sh`）：ふだん使う版。最適化してビルドし、自動テスト、検査用の起動オプション、ログ出力のコードを含めない（`#if DEBUG` で外している）。起動オプションはすべて無視する。Mac をつながずに、ホーム画面から起動して使う。
+  - **デバッグ版**（`scripts/build.sh`、`scripts/install.sh`、`scripts/launch.sh`）：開発用。自己テストと検査の機能、ログ出力を含む。
+  - 2つは同じバンドル ID なので、入れると互いを置き換える。設定は引き継がれる。
+- 署名は、どちらも開発用の証明書と開発用のプロファイルである。リリース版でも `get-task-allow` は有効のままになる。デバッグ接続を受け付けない形（アドホック配布）にするには、配布用の証明書とプロファイルを Apple のアカウントに作る必要があり、作っていない。
 - `--console` を付けると、アプリの標準出力が端末に返る。アプリは終了しないので、バックグラウンドで実行してログをファイルに取る。
 - zsh では `log` が組み込みコマンドなので、macOS のログは `/usr/bin/log` で読む。
 - iPhone 側の前提：デベロッパモードがオン、ロック解除、USB 接続。

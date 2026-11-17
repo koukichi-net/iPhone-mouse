@@ -1,6 +1,8 @@
 import Foundation
 import HIDCore
 
+#if DEBUG   // self-tests exist only in Debug builds
+
 // Key self-tests (design §11.2, safety rules §11.3).
 //
 // `keys` — safe without seize: F13 down/up, Left Shift alone down/up, Caps Lock exactly twice
@@ -335,3 +337,4 @@ extension SelfTestRunner {
 }
 
 private func hex(_ b: UInt8) -> String { String(format: "%02X", b) }
+#endif

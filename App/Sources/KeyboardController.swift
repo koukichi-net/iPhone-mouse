@@ -33,8 +33,10 @@ final class KeyboardController {
     @ObservationIgnored let peripheral: BLEPeripheral
     @ObservationIgnored private weak var input: InputController?
     @ObservationIgnored private var state = KeyboardState()
+    #if DEBUG
     /// Separate state for self-test input (real input is ignored while a phase plays).
     @ObservationIgnored private var selfTestState = KeyboardState()
+    #endif
     @ObservationIgnored var keyMap: KeyMap = KeyMap(layout: .jis, host: .macOS)
     @ObservationIgnored var haptics = true
     @ObservationIgnored private let haptic = UIImpactFeedbackGenerator(style: .light)
@@ -51,11 +53,13 @@ final class KeyboardController {
     @ObservationIgnored private var flushTask: Task<Void, Never>?
     @ObservationIgnored private var mirrorTask: Task<Void, Never>?
     @ObservationIgnored private var hintTask: Task<Void, Never>?
+    #if DEBUG
     /// `--selftest=compose`: mirror events pass the gate, and every step must satisfy this
     /// check or the test aborts (nothing more is sent).
     @ObservationIgnored var composeSelfTestGuard: ((TextEntryRouter.Step) -> Bool)?
     @ObservationIgnored private(set) var composeSelfTestAborted = false
     @ObservationIgnored private var savedAutoSwitch = true
+    #endif
     /// 空白キー長押しのカーソル移動を矢印キーとして送る (cursor pad, Controls.swift).
     @ObservationIgnored var cursorPadEnabled = true
     @ObservationIgnored private var arrowQueue = ArrowStepQueue()
@@ -79,8 +83,28 @@ final class KeyboardController {
     // MARK: - Panel (real input)
 
     private func gate() -> Bool {
+        #if DEBUG
         if let input, input.selfTestPlaying { input.noteIgnoredRealEvent(); return false }
+        #endif
         return true
+    }
+
+    /// The compose self-test drives the text field (always false in Release builds).
+    private var composeSelfTestRunning: Bool {
+        #if DEBUG
+        composeSelfTestGuard != nil
+        #else
+        false
+        #endif
+    }
+
+    /// `--textcap-probe` (Debug builds only): text-field events are logged, never sent.
+    private var textCapProbe: Bool {
+        #if DEBUG
+        LaunchOptions.current.textCapProbe
+        #else
+        false
+        #endif
     }
 
     func modifierDown(_ m: PanelModifier) {
@@ -132,10 +156,12 @@ final class KeyboardController {
     /// Every event of the capture field (`CaptureTextView`). Returns the outcome for its
     /// `TEXTCAP` line.
     func handleCapture(_ event: CaptureEvent, language: String?) -> String? {
-        if LaunchOptions.current.textCapProbe {
+        #if DEBUG
+        if textCapProbe {
             if case .arrows(let steps) = event { return cursorPadArrows(steps) }
             return "probe: not routed, nothing sent"
         }
+        #endif
         switch event {
         case .arrows(let steps): return cursorPadArrows(steps)
         case .insert(let s): return textInsert(s, language: language)
@@ -168,10 +194,10 @@ final class KeyboardController {
     /// mirror state is left alone: with an uncommitted conversion on the host, the arrows pick
     /// candidates / segments there. No かな / 英数. `--textcap-probe`: logged, never sent.
     private func cursorPadArrows(_ steps: [ArrowSteps]) -> String {
-        let probe = LaunchOptions.current.textCapProbe
+        let probe = textCapProbe
         if !probe {
             guard cursorPadEnabled else { return "setting off (空白キー長押しで矢印キー): nothing sent" }
-            guard composeSelfTestGuard == nil, gate() else { return "ignored (self-test playing)" }
+            guard !composeSelfTestRunning, gate() else { return "ignored (self-test playing)" }
         }
         var r = ArrowStepQueue.AddResult()
         for s in steps {
@@ -217,12 +243,14 @@ final class KeyboardController {
                     self.arrowTask = nil
                     return
                 }
-                if LaunchOptions.current.textCapProbe {
+                #if DEBUG
+                if self.textCapProbe {
                     let d = self.arrowQueue.next()!
                     Log.line("CURSORPAD would press \(d.symbol) (probe: nothing sent); pending \(self.arrowQueue.summary)")
                     try? await Task.sleep(for: .milliseconds(50))
                     continue
                 }
+                #endif
                 if self.arrowReady, let d = self.arrowQueue.next() {
                     let r = self.state.tap(d.usage)
                     self.peripheral.send(r)
@@ -241,7 +269,7 @@ final class KeyboardController {
 
     /// One more edge-repeat arrow of `d` may be queued (the edge repeat skips its tick otherwise).
     func arrowRoom(_ d: ArrowDirection) -> Bool {
-        (cursorPadEnabled || LaunchOptions.current.textCapProbe)
+        (cursorPadEnabled || textCapProbe)
             && arrowQueue.count(d) < min(arrowQueue.cap, Self.edgeRepeatMaxPending)
     }
 
@@ -258,7 +286,7 @@ final class KeyboardController {
     /// A Japanese-path event: queued; processed when stable (`flushMirror`).
     private func mirrorEvent(_ e: CompositionMirror.Event, language: String?) -> String {
         noteLanguage(language, source: "event")
-        guard composeSelfTestGuard != nil || gate() else { return "ignored (self-test playing)" }
+        guard composeSelfTestRunning || gate() else { return "ignored (self-test playing)" }
         var event = e
         var note = ""
         if case .ended(let c, _) = e {
@@ -428,6 +456,7 @@ final class KeyboardController {
                 return
             }
             let step = pendingSteps.removeFirst()
+            #if DEBUG
             if let check = composeSelfTestGuard, !check(step) {
                 Log.line("COMPOSE ABORTED: step \(step) is not allowed — dropped it and \(pendingSteps.count) pending step(s), nothing more is sent")
                 pendingSteps.removeAll()
@@ -435,6 +464,7 @@ final class KeyboardController {
                 composeSelfTestGuard = { _ in false }
                 return
             }
+            #endif
             let r = step.reports(state: &state, keyMap: keyMap)
             peripheral.send(r.reports)
             if !r.skipped.isEmpty { Log.line("TEXTCAP keymap could not type \(Log.recordTyping ? "\(r.skipped.map(String.init))" : "\(r.skipped.count) character(s)")") }
@@ -523,12 +553,15 @@ final class KeyboardController {
     func forgetHost() {
         dropArrows(reason: "host gone")
         state.forgetHost()
+        #if DEBUG
         selfTestState.forgetHost()
+        #endif
         consumerDown = nil
         syncUI()
     }
 
-    // MARK: - Self-test input (bypasses the gate; the caller checks safety)
+    #if DEBUG
+    // MARK: - Self-test input (Debug builds only; bypasses the gate; the caller checks safety)
 
     func selfTestKeyDown(_ usage: KeyUsage) -> [KeyboardReport] {
         let r = selfTestState.keyDown(usage)
@@ -636,6 +669,7 @@ final class KeyboardController {
         peripheral.send(r)
         return r
     }
+    #endif
 
     // MARK: - Helpers
 

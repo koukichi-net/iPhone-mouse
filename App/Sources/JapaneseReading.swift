@@ -55,7 +55,9 @@ enum JapaneseReading {
         }))
     }
 
-    /// `--reading-probe` examples (logged on the device at launch).
+    #if DEBUG
+    /// `--reading-probe` examples (logged on the device at launch; Debug builds only).
     static let probeExamples = ["送られてないですね", "送ら", "送らない", "今日は", "日本語入力", "コンピュータ", "行った",
                                 "ありがとうございます", "お願いします。", "東京都、大阪府", "iPhoneで", "😀", "明日", "上手"]
+    #endif
 }

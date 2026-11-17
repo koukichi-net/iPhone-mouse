@@ -7,32 +7,44 @@ import HIDCore
 /// the `BLEPeripheral` hooks, so no hook silently replaces another.
 @MainActor
 final class AppModel {
+    #if DEBUG
+    /// Launch arguments for tests and diagnostics (Debug builds only).
     let options = LaunchOptions.current
+    private var clickerProbe: ClickerProbe?
+    private var selfTest: SelfTestRunner?
+    #endif
     let settings = AppSettings()
     let hosts: HostStore
     let peripheral: BLEPeripheral
     let input: InputController
     let keyboard: KeyboardController
     let clicker: ClickerController
-    private var clickerProbe: ClickerProbe?
     private let namer: HostNamer
     private var named: Set<UUID> = []
-    private var selfTest: SelfTestRunner?
     private var started = false
     private var observers: [NSObjectProtocol] = []
 
     init() {
         hosts = HostStore(settings: settings)
         namer = HostNamer(store: hosts)
-        peripheral = BLEPeripheral(layout: .planA, localName: "HIDPad", logReports: options.logReports,
-                                   pinnedCentral: options.activeCentral, dryRun: options.clickerProbe)
-        input = InputController(peripheral: peripheral, settings: settings, logReports: options.logReports)
-        keyboard = KeyboardController(peripheral: peripheral, input: input, logReports: options.logReports)
+        #if DEBUG
+        let logReports = options.logReports
+        peripheral = BLEPeripheral(layout: .planA, localName: "HIDPad", logReports: logReports)
+        peripheral.pinnedCentral = options.activeCentral
+        peripheral.dryRun = options.clickerProbe
+        #else
+        let logReports = false
+        peripheral = BLEPeripheral(layout: .planA, localName: "HIDPad")
+        #endif
+        input = InputController(peripheral: peripheral, settings: settings, logReports: logReports)
+        keyboard = KeyboardController(peripheral: peripheral, input: input, logReports: logReports)
         input.keyboard = keyboard
         clicker = ClickerController(peripheral: peripheral, settings: settings, hosts: hosts)
+        #if DEBUG
         if options.show == "clicker" || options.clickerProbe {
             settings.clickerPreview = true   // shown without changing the saved setting
         }
+        #endif
         peripheral.willChangeActiveHost = { [weak self] in
             guard let self else { return }
             // The pointer's release (e.g. the arrow-pointer shortcut) goes to the old host
@@ -90,6 +102,7 @@ final class AppModel {
     func start() {
         guard !started else { return }
         started = true
+        #if DEBUG
         Log.line("START HIDPad iOS=\(UIDevice.current.systemVersion) args=\(Array(ProcessInfo.processInfo.arguments.dropFirst())) logReports=\(options.logReports) selftest=\(options.selfTests) activeCentral=\(options.activeCentral?.uuidString ?? "none") repeat=\(options.repeatSeconds)s auth=\(authName(CBManager.authorization))")
         Log.line("SETTINGS \(settings.summary)")
         for p in hosts.ordered { Log.line("HOST_PROFILE known \(p.id) \(p.summary)") }
@@ -98,7 +111,9 @@ final class AppModel {
             selfTest = runner
             peripheral.didSubscribeMouse = { [weak runner] _ in runner?.mouseSubscribed() }
         }
-        installLifecycleLogging()
+        #endif
+        installLifecycleObservers()
+        #if DEBUG
         if settings.clickerActive {
             Log.line("CLICKER mode on at launch (saved=\(settings.clickerMode) preview=\(settings.clickerPreview)) slideKeys=\(settings.slideKeys.rawValue)")
         }
@@ -112,9 +127,12 @@ final class AppModel {
                 Log.line("READING \(s.debugDescription) -> \((JapaneseReading.reading(of: s) ?? "nil").debugDescription)")
             }
         }
+        #endif
         UIApplication.shared.isIdleTimerDisabled = true   // didBecomeActive may have fired before onAppear
         peripheral.start()
+        #if DEBUG
         Task { await heartbeat() }
+        #endif
     }
 
     private func appState() -> String {
@@ -126,7 +144,9 @@ final class AppModel {
         }
     }
 
-    private func installLifecycleLogging() {
+    /// Releases everything when the app leaves the foreground, and keeps the screen awake
+    /// while it is in front (each change is logged in Debug builds).
+    private func installLifecycleObservers() {
         let names: [(Notification.Name, String)] = [
             (UIApplication.willResignActiveNotification, "willResignActive"),
             (UIApplication.didEnterBackgroundNotification, "didEnterBackground"),
@@ -157,6 +177,7 @@ final class AppModel {
         }
     }
 
+    #if DEBUG
     private func heartbeat() async {
         while true {
             try? await Task.sleep(for: .seconds(30))
@@ -165,6 +186,7 @@ final class AppModel {
             Log.line("HEARTBEAT appState=\(appState()) state=\(stateName(p.state)) adv=\(p.isAdvertising) hosts=\(p.hosts.count) {\(hosts)} active=\(p.activeHostID.map(shortID) ?? "none") leds=\(p.leds.rawValue) idleTimerDisabled=\(UIApplication.shared.isIdleTimerDisabled) battery=\(Int(UIDevice.current.batteryLevel * 100))% stats: \(p.stats.text)")
         }
     }
+    #endif
 }
 
 @main

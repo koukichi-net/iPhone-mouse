@@ -8,6 +8,13 @@ final class InputController {
     let peripheral: BLEPeripheral
     let settings: AppSettings
     private var engine: PointerEngine
+    /// Drives inertial scrolling (`PointerEngine.advance(to:)`) once per frame while active.
+    private var displayLink: CADisplayLink?
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
+    private let logReports: Bool
+    /// Released together with the pointer when a self-test phase starts.
+    weak var keyboard: KeyboardController?
+    #if DEBUG
     /// Separate engine for synthetic self-test touches, with fixed settings (defaults, inertia
     /// off unless a phase asks for it) so the scripts' net-zero property does not depend on the
     /// user's settings.
@@ -17,19 +24,14 @@ final class InputController {
         s.scrollInertia = false
         return s
     }
-    /// Drives inertial scrolling (`PointerEngine.advance(to:)`) once per frame while active.
-    private var displayLink: CADisplayLink?
     /// Scroll sent by self-test inertia (added to the phase totals by the runner).
     private(set) var selfTestInertiaTotals = ActionTotals()
     var selfTestInertiaActive: Bool { selfTestEngine.isInertiaActive }
-    private let haptic = UIImpactFeedbackGenerator(style: .light)
-    private let logReports: Bool
     /// True while a self-test phase plays: real touches and on-screen buttons are ignored so
     /// the phase's report counts contain only synthetic input.
     private(set) var selfTestPlaying = false
     private(set) var ignoredRealEvents = 0
-    /// Released together with the pointer when a self-test phase starts.
-    weak var keyboard: KeyboardController?
+    #endif
 
     init(peripheral: BLEPeripheral, settings: AppSettings, logReports: Bool) {
         self.peripheral = peripheral
@@ -52,13 +54,13 @@ final class InputController {
 
     var currentSettings: PointerSettings { engine.settings }
 
-    func noteIgnoredRealEvent() { ignoredRealEvents += 1 }
-
     // MARK: Real input
 
     func handleTouches(_ events: [TouchEvent]) {
         guard !events.isEmpty else { return }
+        #if DEBUG
         if selfTestPlaying { ignoredRealEvents += events.count; return }
+        #endif
         let hadInertia = engine.isInertiaActive
         emit(engine.handle(events))
         if logReports, hadInertia, !engine.isInertiaActive { Log.line("INERTIA stopped by touch") }
@@ -69,7 +71,11 @@ final class InputController {
     // MARK: Inertia
 
     private func updateInertiaDriver() {
+        #if DEBUG
         let needed = engine.isInertiaActive || selfTestEngine.isInertiaActive
+        #else
+        let needed = engine.isInertiaActive
+        #endif
         if needed, displayLink == nil {
             let link = CADisplayLink(target: DisplayLinkProxy { [weak self] in self?.inertiaTick() }, selector: #selector(DisplayLinkProxy.tick))
             link.add(to: .main, forMode: .common)
@@ -86,35 +92,30 @@ final class InputController {
             emit(engine.advance(to: now))
             if logReports, !engine.isInertiaActive { Log.line("INERTIA end") }
         }
+        #if DEBUG
         if selfTestEngine.isInertiaActive {
             let actions = selfTestEngine.advance(to: now)
             for a in actions { selfTestInertiaTotals.add(a); Log.line("ACTION inertia \(a.logText)") }
             peripheral.send(actions)
         }
+        #endif
         updateInertiaDriver()
     }
 
     func setButton(_ button: MouseButtons, pressed: Bool) {
+        #if DEBUG
         if selfTestPlaying { ignoredRealEvents += 1; return }
+        #endif
         emit(engine.setButton(button, pressed: pressed))
-    }
-
-    /// Start or stop ignoring real input for a self-test phase. Starting releases whatever the
-    /// real engine holds (its touches are forgotten, so later events of those touches are ignored).
-    func setSelfTestPlaying(_ playing: Bool) {
-        if playing {
-            let actions = engine.reset()
-            if !actions.isEmpty { Log.line("INPUT_RESET (self-test phase start) -> \(actions.map(\.logText))") }
-            peripheral.send(actions)
-            keyboard?.releaseAll(reason: "self-test phase start")
-            ignoredRealEvents = 0
-        }
-        selfTestPlaying = playing
     }
 
     /// Release everything (app leaves the foreground, touches cancelled, host change).
     func reset(reason: String) {
+        #if DEBUG
         let actions = engine.reset() + selfTestEngine.reset()
+        #else
+        let actions = engine.reset()
+        #endif
         if !actions.isEmpty { Log.line("INPUT_RESET (\(reason)) -> \(actions.map(\.logText))") }
         peripheral.send(actions)
         updateInertiaDriver()
@@ -131,7 +132,23 @@ final class InputController {
         peripheral.send(actions)
     }
 
-    // MARK: Self-test input
+    #if DEBUG
+    // MARK: Self-test input (Debug builds only)
+
+    func noteIgnoredRealEvent() { ignoredRealEvents += 1 }
+
+    /// Start or stop ignoring real input for a self-test phase. Starting releases whatever the
+    /// real engine holds (its touches are forgotten, so later events of those touches are ignored).
+    func setSelfTestPlaying(_ playing: Bool) {
+        if playing {
+            let actions = engine.reset()
+            if !actions.isEmpty { Log.line("INPUT_RESET (self-test phase start) -> \(actions.map(\.logText))") }
+            peripheral.send(actions)
+            keyboard?.releaseAll(reason: "self-test phase start")
+            ignoredRealEvents = 0
+        }
+        selfTestPlaying = playing
+    }
 
     /// Feeds one synthetic touch through the engine. Returns false (and sends nothing) if the
     /// engine produced a button action, which the self-test must never send (design §11.3).
@@ -158,8 +175,10 @@ final class InputController {
         peripheral.send(actions)
         return true
     }
+    #endif
 }
 
+#if DEBUG
 /// `--selftest=<names>` driver: 2 s after the mouse input report is subscribed, plays the
 /// scripted touches in real time through `InputController.feedSelfTest`, and the key tests
 /// (`keys`, `text`, see KeySelfTest.swift) through `KeyboardController`. Key tests run once
@@ -329,14 +348,15 @@ final class SelfTestRunner {
     }
 }
 
+private func ms(_ d: Duration) -> Double {
+    Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
+}
+#endif
+
 /// CADisplayLink retains its target; this proxy keeps the controller out of that cycle.
 @MainActor
 private final class DisplayLinkProxy: NSObject {
     let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
     @objc func tick() { action() }
-}
-
-private func ms(_ d: Duration) -> Double {
-    Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
 }

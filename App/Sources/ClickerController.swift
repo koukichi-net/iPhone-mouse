@@ -264,7 +264,8 @@ extension SlideKeys {
     }
 }
 
-// MARK: - No-send probe (`--clicker-probe`)
+#if DEBUG
+// MARK: - No-send probe (`--clicker-probe`, Debug builds only)
 
 /// Drives the clicker pipeline with synthetic input while `BLEPeripheral.dryRun` keeps every
 /// input report away from CoreBluetooth (logged as `WOULD_SEND`). Then holds the pointer with
@@ -419,3 +420,4 @@ final class ClickerProbe {
         }
     }
 }
+#endif

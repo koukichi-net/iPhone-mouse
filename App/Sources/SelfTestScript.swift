@@ -1,5 +1,7 @@
 import HIDCore
 
+#if DEBUG   // self-tests exist only in Debug builds
+
 // Synthetic touch scripts for `--selftest=…` (design §11.2, safety rules §11.3).
 //
 // Pure values (no UIKit) so the same code can be dry-run through PointerEngine on the Mac.
@@ -197,3 +199,4 @@ struct ActionTotals: Sendable, CustomStringConvertible {
         "moves=\(moves) sumDx=\(dx) sumDy=\(dy) scrolls=\(scrolls) sumWheel=\(wheel) (+\(wheelUp)/\(wheelDown)) sumPan=\(pan) buttonActions=\(buttons)"
     }
 }
+#endif
