@@ -1,0 +1,20 @@
+# ビルド生成物
+build/
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+
+# 実機ログ・測定の生データ（端末名や識別子を含む）
+*.log
+spike/fps-notes/
+
+# 作業中の退避コピー
+backups/
+
+# 個人の環境設定（UDID、チーム ID）
+scripts/local.env
+
+# macOS
+.DS_Store

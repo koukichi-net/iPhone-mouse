@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.koukichi.mac-connect</string>
+    <key>CFBundleName</key>
+    <string>mac-connect</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>mac-connect connects to the HIDPad iPhone app so that macOS can attach it as a Bluetooth keyboard and mouse.</string>
+</dict>
+</plist>

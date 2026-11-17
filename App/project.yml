@@ -1,0 +1,43 @@
+name: HIDPad
+options:
+  bundleIdPrefix: dev.koukichi
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  HIDCore:
+    path: ../Packages/HIDCore
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+targets:
+  HIDPad:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: HIDCore
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleDisplayName: HIDPad
+        CFBundleShortVersionString: "0.2"
+        CFBundleVersion: "1"
+        NSBluetoothAlwaysUsageDescription: "HIDPad publishes a Bluetooth LE HID service so this iPhone can act as a mouse and keyboard for your computer."
+        NSMotionUsageDescription: "クリッカーモードでポインターボタンを押している間、iPhone の向きの変化（ジャイロ）を接続先のポインタの動きに使います。"
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UIRequiresFullScreen: true
+        UIBackgroundModes:
+          - bluetooth-peripheral
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.koukichi.hidpad
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/HIDPad-Bridging-Header.h
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
