@@ -51,6 +51,7 @@ struct RemoteView: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .defersSystemGestures(on: .all)
+        #if DEBUG
         .onAppear {
             guard let show = model.options.show else { return }
             if let p = PanelPage(rawValue: show) { panel = p; lastPage = p }
@@ -58,12 +59,17 @@ struct RemoteView: View {
             showHosts = show == "hosts" || show == "hostdetail"
             showSpeed = show == "speed"
         }
+        #endif
         .sheet(isPresented: $showSettings) {
             SettingsView(model: model)
         }
         .sheet(isPresented: $showHosts) {
             NavigationStack {
+                #if DEBUG
                 HostsView(model: model, initialDetail: model.options.show == "hostdetail" ? model.hosts.ordered.first?.id : nil)
+                #else
+                HostsView(model: model)
+                #endif
             }
                 .preferredColorScheme(.dark)
         }
@@ -391,8 +397,12 @@ struct TextEntryStrip: View {
 
     private var keyboard: KeyboardController { model.keyboard }
     static let pasteLimit = 2000
+    #if DEBUG
     /// `--cursorpad-visible`: show the capture field and its pad (diagnostics, screenshots).
     static let padVisible = ProcessInfo.processInfo.arguments.contains("--cursorpad-visible")
+    #else
+    static let padVisible = false
+    #endif
 
     var body: some View {
         HStack(spacing: 8) {

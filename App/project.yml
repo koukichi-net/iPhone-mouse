@@ -23,7 +23,7 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleDisplayName: HIDPad
-        CFBundleShortVersionString: "0.2"
+        CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
         NSBluetoothAlwaysUsageDescription: "HIDPad publishes a Bluetooth LE HID service so this iPhone can act as a mouse and keyboard for your computer."
         NSMotionUsageDescription: "クリッカーモードでポインターボタンを押している間、iPhone の向きの変化（ジャイロ）を接続先のポインタの動きに使います。"

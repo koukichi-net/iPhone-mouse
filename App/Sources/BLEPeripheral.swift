@@ -111,8 +111,13 @@ final class BLEPeripheral: NSObject {
     // MARK: Private
 
     @ObservationIgnored let layout: GATTLayout
-    /// When set, automatic selection only ever picks this central (`--active-central`).
-    @ObservationIgnored let pinnedCentral: UUID?
+    #if DEBUG
+    /// When set, automatic selection only ever picks this central (`--active-central`, Debug
+    /// builds only; set before `start()`).
+    @ObservationIgnored var pinnedCentral: UUID?
+    #else
+    var pinnedCentral: UUID? { nil }
+    #endif
     @ObservationIgnored private let localName: String
     @ObservationIgnored private let logReports: Bool
     @ObservationIgnored private var manager: CBPeripheralManager!
@@ -136,11 +141,14 @@ final class BLEPeripheral: NSObject {
     @ObservationIgnored private var blockedSince: Date?
     @ObservationIgnored private var pendingBaselines: [(central: CBCentral, characteristic: CBMutableCharacteristic, data: Data, label: String)] = []
     @ObservationIgnored private(set) var stats = SendStats()
-    /// `--clicker-probe`: input reports are never handed to CoreBluetooth; each one that would
-    /// have been sent is logged (`WOULD_SEND`) and counted in `dryRunStats` instead. Baselines
-    /// on subscription (all-zero reports) and battery notifications are unchanged.
-    @ObservationIgnored let dryRun: Bool
+    #if DEBUG
+    /// `--clicker-probe` (Debug builds only; set before `start()`): input reports are never
+    /// handed to CoreBluetooth; each one that would have been sent is logged (`WOULD_SEND`) and
+    /// counted in `dryRunStats` instead. Baselines on subscription (all-zero reports) and
+    /// battery notifications are unchanged.
+    @ObservationIgnored var dryRun = false
     @ObservationIgnored private(set) var dryRunStats = SendStats()
+    #endif
     /// The host that was active last (persisted). Preferred at launch and when the active
     /// host goes away (`HostSelection`). Set by the user's choice, and by automatic changes
     /// after the launch window (or the first one ever); never while `--active-central` pins
@@ -151,10 +159,8 @@ final class BLEPeripheral: NSObject {
     /// Hosts subscribing this long after start are "newcomers" that never take over.
     static let launchWindow: TimeInterval = 8
 
-    init(layout: GATTLayout = .planA, localName: String = "HIDPad", logReports: Bool = false, pinnedCentral: UUID? = nil, dryRun: Bool = false) {
+    init(layout: GATTLayout = .planA, localName: String = "HIDPad", logReports: Bool = false) {
         self.layout = layout
-        self.pinnedCentral = pinnedCentral
-        self.dryRun = dryRun
         self.localName = localName
         self.logReports = logReports
         super.init()
@@ -166,7 +172,9 @@ final class BLEPeripheral: NSObject {
         Log.line("ACTIVE_HOST preferred (last used) = \(preferredHost?.uuidString ?? "none") pinned=\(pinnedCentral?.uuidString ?? "none")")
         UIDevice.current.isBatteryMonitoringEnabled = true
         manager = CBPeripheralManager(delegate: self, queue: .main, options: nil)
+        #if DEBUG
         Log.line("MANAGER created state=\(stateName(manager.state)) auth=\(authName(CBManager.authorization)) layout=\(layout.plan)\(dryRun ? " DRY-RUN (no input report is handed to CoreBluetooth)" : "")")
+        #endif
         NotificationCenter.default.addObserver(forName: UIDevice.batteryLevelDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.notifyBattery() }
         }
@@ -220,16 +228,20 @@ final class BLEPeripheral: NSObject {
         guard let characteristic = inputCharacteristics[kind], let hostID = activeHostID,
               let central = centrals[hostID], hosts.first(where: { $0.id == hostID })?.inputs.contains(kind) == true else {
             stats.dropped += 1
+            #if DEBUG
             if logReports || dryRun { Log.line("DROP \(report.logText) (no active host subscribed to \(kind.rawValue))") }
+            #endif
             return .dropped
         }
         let data = Data(report.bytes)
+        #if DEBUG
         if dryRun {
             queue.didSend(report, at: now)
             Self.record(report, in: &dryRunStats)
             Log.line("WOULD_SEND \(kind.rawValue) central=\(shortID(hostID)) [\(hexString(data))] \(report.logText) (dry run: not sent)")
             return .sent
         }
+        #endif
         var queued = false
         if let exc = HPTryCatch({ queued = manager.updateValue(data, for: characteristic, onSubscribedCentrals: [central]) }) {
             stats.exceptions += 1
@@ -345,11 +357,12 @@ final class BLEPeripheral: NSObject {
             return
         }
         if old != id {
-            let reason: String
+            var reason = old == nil ? "no active host"
+                : !subscribed.contains(old!) ? "previous active host no longer subscribed"
+                : "preferred (last used) host within the launch window"
+            #if DEBUG
             if pinnedCentral != nil { reason = "pinned by --active-central" }
-            else if old == nil { reason = "no active host" }
-            else if !subscribed.contains(old!) { reason = "previous active host no longer subscribed" }
-            else { reason = "preferred (last used) host within the launch window" }
+            #endif
             selectActiveHost(id, reason: reason)
             if let old, old != id, pinnedCentral == nil, subscribed.contains(old) { showNewcomer(old) }
         }

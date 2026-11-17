@@ -427,7 +427,11 @@ final class CaptureTextView: UITextView {
     static let padRows = 15
     static let padFont = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
     static let charWidth: CGFloat = (String(CursorPadGrid.padCharacter) as NSString).size(withAttributes: [.font: padFont]).width
+    #if DEBUG
     private static let padVisible = ProcessInfo.processInfo.arguments.contains("--cursorpad-visible")
+    #else
+    private static let padVisible = false
+    #endif
     private(set) var grid = CursorPadGrid(rows: CaptureTextView.padRows, columns: 31)
     private var tracker = CursorPadTracker(grid: CursorPadGrid(rows: CaptureTextView.padRows, columns: 31))
     /// A pad of a new width waiting for the field to be empty.
@@ -518,8 +522,12 @@ final class CaptureTextView: UITextView {
     /// The Japanese path: Japanese keyboard, a composition in progress, or text not yet cleared.
     private var capturing: Bool { japanese || markedTextRange != nil || !content.isEmpty || Self.probe }
     var composing: Bool { markedTextRange != nil }
+    #if DEBUG
     private static let probe = LaunchOptions.current.textCapProbe
     private var probeStarted = false
+    #else
+    private static let probe = false
+    #endif
 
     // MARK: Content (the field's text without the pad)
 
@@ -570,7 +578,9 @@ final class CaptureTextView: UITextView {
                 guard let self else { return }
                 self.reportMode("focus")
                 self.log("focusSettled", self.handle(.focus, self.language))
+                #if DEBUG
                 if Self.probe, !self.probeStarted { self.startProbe() }
+                #endif
             }
         }
         return ok
@@ -820,7 +830,9 @@ final class CaptureTextView: UITextView {
         suppressMirror = true
         resetPad("new pad")
         suppressMirror = saved
+        #if DEBUG
         Log.line("CURSORPAD pad \(g.rows) rows × \(g.columns) columns (\(reason)): home \(g.center) offset \(g.centerOffset), char \(String(format: "%.2f", Self.charWidth)) pt, line \(String(format: "%.2f", Self.padFont.lineHeight)) pt, field frame \(frame.integral), \(columnsPerStep) column(s) per Left/Right press\(Self.padVisible ? ", VISIBLE (--cursorpad-visible)" : "")")
+        #endif
     }
 
     /// The field becomes the bare pad with the caret at home (replaces `text = ""`).
@@ -1091,7 +1103,8 @@ final class CaptureTextView: UITextView {
 
     private var edgeFullNoted: Set<ArrowDirection> = []
 
-    // MARK: Self-test (`--selftest=compose`)
+    #if DEBUG
+    // MARK: Self-test (`--selftest=compose`) and probe (`--textcap-probe`), Debug builds only
 
     /// Sets marked text as the keyboard does (setAttributedMarkedText, caret at the end).
     func selfTestMark(_ s: String) {
@@ -1193,6 +1206,7 @@ final class CaptureTextView: UITextView {
     private func probeFloatingUpdate(dx: CGFloat, dy: CGFloat) {
         updateFloatingCursor(at: CGPoint(x: fcProbeOrigin.x + dx, y: fcProbeOrigin.y + dy))
     }
+    #endif
 
     // MARK: Clearing
 
@@ -1229,7 +1243,14 @@ final class CaptureTextView: UITextView {
 
     // MARK: Logging
 
-    private func snapshot() -> String { "text=\(Log.q(content))\(markedText())" }
+    /// The field before an edit, for its TEXTCAP line (empty in Release builds: no log).
+    private func snapshot() -> String {
+        #if DEBUG
+        "text=\(Log.q(content))\(markedText())"
+        #else
+        ""
+        #endif
+    }
 
     private func markedText() -> String {
         guard let m = markedTextRange else { return " marked=nil" }
@@ -1244,7 +1265,10 @@ final class CaptureTextView: UITextView {
     /// One line per event: `TEXTCAP +<ms since previous TEXTCAP> <event> lang=<…> text="…"
     /// marked=[a,b)"…"|nil sel=[a,b) [before: text=… marked=…] → <outcome>`. Offsets are UTF-16,
     /// relative to the content (the pad is not shown; a caret in the pad gives offsets outside).
-    private func log(_ event: String, _ outcome: String?, before: String? = nil) {
+    /// Debug builds only (`outcome` is still evaluated by the caller: it routes the event).
+    private func log(_ event: @autoclosure () -> String, _ outcome: String?, before: @autoclosure () -> String? = nil) {
+        #if DEBUG
+        let event = event(), before = before()
         let t = ProcessInfo.processInfo.systemUptime
         let dt = lastLogTime.map { "+\(Int((t - $0) * 1000))ms" } ?? "first"
         lastLogTime = t
@@ -1252,6 +1276,7 @@ final class CaptureTextView: UITextView {
         if let before { line += " | before: \(before)" }
         if let outcome { line += " → \(outcome)" }
         Log.line(line)
+        #endif
     }
 }
 

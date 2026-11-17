@@ -374,12 +374,18 @@ struct SettingsView: View {
                             Text("2文字で1回").tag(2)
                         }
                     }
+                    #if DEBUG
                     Toggle("入力内容のログ（診断用）", isOn: $settings.logTyping)
+                    #endif
                 } header: {
                     Text("文字入力")
                         .id("textSection")
                 } footer: {
+                    #if DEBUG
                     Text(settings.logTyping ? "接続先はローマ字入力にしてください。ログに打った文字が残ります。" : "接続先はローマ字入力にしてください。")
+                    #else
+                    Text("接続先はローマ字入力にしてください。")
+                    #endif
                 }
                 Section {
                     SpeedSlider(title: "ポインタの速さ", scale: .pointer, value: $settings.defaultPointerSpeed)
@@ -399,6 +405,7 @@ struct SettingsView: View {
                     Button("初期設定に戻す") { settings.resetToDefaults() }
                 }
             }
+            #if DEBUG
             .onAppear {
                 // `--show=settings-scroll` / `settings-cursorpad`: start at the scroll / text
                 // entry section (for screenshots).
@@ -407,6 +414,7 @@ struct SettingsView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo(anchor, anchor: .top) }
                 }
             }
+            #endif
             }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)

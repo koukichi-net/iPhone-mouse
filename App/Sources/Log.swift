@@ -1,7 +1,8 @@
 import Foundation
 import HIDCore
 
-/// Launch arguments: `--log-reports`, `--selftest=pointer[,burst][,keys][,text]`, `--repeat=<s>`,
+#if DEBUG
+/// Launch arguments (Debug builds only; a Release build ignores its arguments): `--log-reports`, `--selftest=pointer[,burst][,keys][,text]`, `--repeat=<s>`,
 /// `--active-central=<uuid>`, `--text-layout=us|jis`.
 struct LaunchOptions: Sendable {
     var logReports = false
@@ -47,13 +48,20 @@ struct LaunchOptions: Sendable {
         return o
     }()
 }
+#endif
 
 /// Line logger to stdout (unbuffered, so `devicectl … --console` sees lines at once).
+/// Debug builds only: in a Release build `line` does nothing and its message is never built.
 enum Log {
+    #if DEBUG
     nonisolated(unsafe) private static var started = false
     /// 入力内容をログに記録する（診断用）. When false (the default), typed text never reaches
     /// the log: `q` gives only lengths and `notes` hides every quoted literal.
     @MainActor static var recordTyping = false
+    #else
+    /// Release builds have no log and no setting for it: typed text is never recorded.
+    static let recordTyping = false
+    #endif
 
     /// Typed text for a log line: quoted, or only its length when recording is off.
     @MainActor static func q(_ s: String) -> String { recordTyping ? s.debugDescription : "<\(s.count) chars>" }
@@ -62,9 +70,11 @@ enum Log {
     /// with every quoted literal replaced by "…" when recording is off.
     @MainActor static func notes(_ s: String) -> String { recordTyping ? s : LogRedaction.quoted(s) }
 
+    #if DEBUG
     private static let t0 = Date()
 
-    @MainActor static func line(_ s: String) {
+    @MainActor static func line(_ message: @autoclosure () -> String) {
+        let s = message()
         if !started {
             setvbuf(stdout, nil, _IONBF, 0)
             started = true
@@ -77,6 +87,9 @@ enum Log {
         print(String(format: "[HP %02d:%02d:%02d.%03d +%8.3f] ", parts.tm_hour, parts.tm_min, parts.tm_sec, ms,
                      now.timeIntervalSince(t0)) + s)
     }
+    #else
+    @MainActor @inline(__always) static func line(_ message: @autoclosure () -> String) {}
+    #endif
 }
 
 func hexString(_ bytes: some Sequence<UInt8>) -> String {

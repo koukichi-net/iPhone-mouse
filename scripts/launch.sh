@@ -1,5 +1,7 @@
 #!/bin/bash
-# Launch HIDPad with its stdout captured, detached in the background.
+# Launch the Debug build of HIDPad with its stdout captured, detached in the background
+# (development and tests). The Release build has no log and ignores arguments: start it
+# with scripts/open.sh or from the home screen.
 # Usage: scripts/launch.sh [--udid UDID] [--log FILE] [--fg] [-- app arguments...]
 #   app arguments: --log-reports  --selftest=pointer[,inertia][,burst][,keys][,lang][,text][,kana][,compose]  --repeat=<s>
 #                  --active-central=<uuid>  --text-layout=us|jis  --show=keys|function|text|media|settings|settings-scroll|settings-cursorpad|hosts|hostdetail|speed

@@ -25,10 +25,12 @@ final class AppSettings {
     var scrollInertia: Bool { didSet { save("scrollInertia", scrollInertia) } }
     /// Text field: send かな / 英数 before kana / ASCII letters so the host IME follows (§8.4).
     var autoIMESwitch: Bool { didSet { save("autoIMESwitch", autoIMESwitch) } }
+    #if DEBUG
     /// 入力内容をログに記録する（診断用）: TEXTCAP / MIRROR lines show what was typed. Off by
     /// default (typed text is replaced by lengths); turned off once for installs that had the
-    /// old default on (2026-11-18, `logTypingDefaultOff`).
+    /// old default on (2026-11-18, `logTypingDefaultOff`). Debug builds only (no log in Release).
     var logTyping: Bool { didSet { save("logTyping", logTyping); Log.recordTyping = logTyping } }
+    #endif
     /// 空白キー長押しのカーソル移動を矢印キーとして送る (the keyboard's space-bar cursor gesture).
     var cursorPadArrows: Bool { didSet { save("cursorPadArrows", cursorPadArrows) } }
     /// Cursor gesture sensitivity: characters of caret movement per Left/Right press (1 or 2).
@@ -69,6 +71,7 @@ final class AppSettings {
         scrollStripWidth = (defaults.object(forKey: "scrollStripWidth") as? Double) ?? ScrollStripLayout.defaultWidth
         scrollInertia = (defaults.object(forKey: "scrollInertia") as? Bool) ?? base.scrollInertia
         autoIMESwitch = (defaults.object(forKey: "autoIMESwitch") as? Bool) ?? true
+        #if DEBUG
         // One-time: the old default was on and the user never chose it, so it is forced off
         // once; a later choice in the settings is kept.
         if !defaults.bool(forKey: "logTypingDefaultOff") {
@@ -76,11 +79,14 @@ final class AppSettings {
             defaults.set(true, forKey: "logTypingDefaultOff")
         }
         logTyping = (defaults.object(forKey: "logTyping") as? Bool) ?? false
+        #endif
         cursorPadArrows = (defaults.object(forKey: "cursorPadArrows") as? Bool) ?? true
         cursorPadColumnsPerStep = min(2, max(1, (defaults.object(forKey: "cursorPadColumnsPerStep") as? Int) ?? 1))
         clickerMode = (defaults.object(forKey: "clickerMode") as? Bool) ?? false
         slideKeys = (defaults.string(forKey: "slideKeys")).flatMap(SlideKeys.init(rawValue:)) ?? .arrows
+        #if DEBUG
         Log.recordTyping = logTyping
+        #endif
     }
 
     var scrollStrip: ScrollStripLayout { ScrollStripLayout(edge: scrollStripEdge, width: scrollStripWidth) }
@@ -109,7 +115,9 @@ final class AppSettings {
         scrollStripWidth = ScrollStripLayout.defaultWidth
         scrollInertia = base.scrollInertia
         autoIMESwitch = true
+        #if DEBUG
         logTyping = false
+        #endif
         cursorPadArrows = true
         cursorPadColumnsPerStep = 1
         clickerMode = false
@@ -117,12 +125,21 @@ final class AppSettings {
         slideKeys = .arrows
     }
 
+    /// One line for the log; the settings sheet also watches it for changes.
     var summary: String {
         String(format: "acceleration=%.2f invertScroll=%@ tapToClick=%@ haptics=%@ strip=%@/%.0fpt inertia=%@ autoIME=%@ logTyping=%@ cursorPad=%@/%d clicker=%@%@ slideKeys=%@ defaults: speed=%.2f scroll=%.2f layout=%@ os=%@",
                acceleration, "\(invertScroll)", "\(tapToClick)", "\(haptics)", scrollStripEdge.rawValue, scrollStripWidth,
-               "\(scrollInertia)", "\(autoIMESwitch)", "\(logTyping)", "\(cursorPadArrows)", cursorPadColumnsPerStep,
+               "\(scrollInertia)", "\(autoIMESwitch)", logTypingText, "\(cursorPadArrows)", cursorPadColumnsPerStep,
                "\(clickerMode)", clickerPreview ? "(preview)" : "", slideKeys.rawValue, defaultPointerSpeed, defaultScrollSpeed,
                defaultLayout.rawValue, defaultHostOS.rawValue)
+    }
+
+    private var logTypingText: String {
+        #if DEBUG
+        "\(logTyping)"
+        #else
+        "false"
+        #endif
     }
 
     private func save(_ key: String, _ value: Any) {
