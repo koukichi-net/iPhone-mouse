@@ -210,4 +210,6 @@ cd Packages/HIDCore && swift test
 
 ## ライセンスと出典
 
+MIT ライセンス（[LICENSE](LICENSE)）。
+
 HID over GATT の仕様をもとに独自に実装した。既存のオープンソース実装（`darwin-bt-remote`、AGPL-3.0）のコードは使っていない。
